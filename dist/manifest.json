@@ -8,6 +8,6 @@
   ],
   "action": {
     "default_title": "Open ShopBoard",
-    "default_popup": "dashboard.html"
+    "default_popup": "popup.html"
   }
 }
