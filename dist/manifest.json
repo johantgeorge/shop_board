@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "ShopBoard",
+  "version": "0.1.0",
+  "description": "Barebones local product board dashboard for saved shopping items.",
+  "permissions": [
+    "storage"
+  ],
+  "action": {
+    "default_title": "Open ShopBoard",
+    "default_popup": "dashboard.html"
+  }
+}
