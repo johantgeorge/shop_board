@@ -1,7 +1,7 @@
 :root {
   color-scheme: light;
   --bg: #f4efe7;
-  --panel: rgba(255, 251, 246, 0.92);
+  --panel: #fffbf6;
   --panel-strong: #fffaf2;
   --border: #d8cdbf;
   --text: #1f1b17;
@@ -29,9 +29,7 @@ body {
   overflow-x: hidden;
   font-family: Georgia, "Times New Roman", serif;
   color: var(--text);
-  background:
-    radial-gradient(circle at top left, rgba(197, 106, 45, 0.18), transparent 34%),
-    linear-gradient(145deg, #efe4d3 0%, #f7f3eb 58%, #efe7da 100%);
+  background: var(--bg);
 }
 
 button,
@@ -50,7 +48,6 @@ textarea {
   gap: 12px;
 }
 
-.topbar,
 .section-head,
 .toolbar,
 .stats-bar,
@@ -75,7 +72,6 @@ textarea {
   color: var(--muted);
 }
 
-h1,
 h2 {
   margin: 0;
   font-size: 22px;
@@ -86,9 +82,11 @@ h2 {
   font-size: 18px;
 }
 
-.hero-card,
+.section-head {
+  align-items: flex-start;
+}
+
 .card,
-.view-panel,
 input,
 select,
 textarea,
@@ -98,36 +96,11 @@ textarea,
 .link-button,
 .icon-button {
   border: 1px solid var(--border);
-  border-radius: 18px;
+  border-radius: 0;
 }
 
-.hero-card,
 .view-panel {
-  background: rgba(255, 250, 242, 0.52);
-  backdrop-filter: blur(12px);
-}
-
-.hero-card {
-  padding: 12px 14px;
-  box-shadow: var(--shadow);
-}
-
-.hero-kicker,
-.hero-copy {
-  margin: 0;
-}
-
-.hero-kicker {
-  font-size: 12px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--accent-strong);
-}
-
-.hero-copy {
-  margin-top: 8px;
-  color: var(--muted);
-  line-height: 1.4;
+  background: transparent;
 }
 
 .view-panel {
@@ -249,7 +222,7 @@ textarea {
 }
 
 .danger-button {
-  background: #fff3f1;
+  background: #f8e6e2;
   color: var(--danger);
   border-color: rgba(159, 47, 47, 0.28);
 }
@@ -278,10 +251,10 @@ textarea {
 
 .empty-state {
   padding: 22px 16px;
+  border-radius: 0;
   border: 1px dashed var(--border);
-  border-radius: 18px;
   text-align: center;
-  background: rgba(255, 250, 242, 0.52);
+  background: var(--panel-strong);
 }
 
 .is-hidden {

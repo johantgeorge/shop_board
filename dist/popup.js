@@ -33,17 +33,15 @@ const defaultState = {
 
 const state = {
   data: loadState(),
-  currentView: "FOLDER_LIST",
+  currentView: "SAVE_FORM",
   selectedFolderId: null,
-  selectedItemId: null,
-  isEditing: false
+  selectedItemId: null
 };
 
 const folderView = document.getElementById("folder-view");
 const itemsView = document.getElementById("items-view");
 const formView = document.getElementById("form-view");
-const viewTitle = document.getElementById("view-title");
-const backButton = document.getElementById("back-button");
+const backButtons = document.querySelectorAll("[data-back-button]");
 const folderList = document.getElementById("folder-list");
 const itemList = document.getElementById("item-list");
 const itemsFolderTitle = document.getElementById("items-folder-title");
@@ -53,7 +51,7 @@ const itemTotal = document.getElementById("item-total");
 const itemForm = document.getElementById("item-form");
 const openUrlLink = document.getElementById("open-url-link");
 const itemFolderSelect = document.getElementById("item-folder");
-const editItemButton = document.getElementById("edit-item-button");
+const homeButton = document.getElementById("home-button");
 
 const fields = {
   title: document.getElementById("item-name"),
@@ -73,12 +71,12 @@ function bootstrap() {
 }
 
 function bindEvents() {
-  backButton.addEventListener("click", handleBack);
+  backButtons.forEach((button) => button.addEventListener("click", handleBack));
   document.getElementById("add-folder-button")?.addEventListener("click", handleAddFolder);
   document.getElementById("folder-menu-button")?.addEventListener("click", handleFolderMenu);
   document.getElementById("new-item-button")?.addEventListener("click", handleNewItem);
   document.getElementById("delete-item-button")?.addEventListener("click", handleDeleteItem);
-  editItemButton.addEventListener("click", toggleEditMode);
+  homeButton.addEventListener("click", handleHome);
   itemForm.addEventListener("submit", handleSaveItem);
 }
 
@@ -94,15 +92,6 @@ function renderView() {
   folderView.classList.toggle("is-hidden", state.currentView !== "FOLDER_LIST");
   itemsView.classList.toggle("is-hidden", state.currentView !== "ITEM_LIST");
   formView.classList.toggle("is-hidden", state.currentView !== "SAVE_FORM");
-  backButton.classList.toggle("is-hidden", state.currentView === "FOLDER_LIST");
-
-  if (state.currentView === "FOLDER_LIST") {
-    viewTitle.textContent = "Folders";
-  } else if (state.currentView === "ITEM_LIST") {
-    viewTitle.textContent = getSelectedFolder()?.name ?? "Items";
-  } else {
-    viewTitle.textContent = state.selectedItemId ? "Product" : "New Item";
-  }
 }
 
 function renderFolders() {
@@ -125,7 +114,6 @@ function renderFolders() {
     button.querySelector(".card-title").textContent = folder.name;
     button.querySelector(".card-meta").textContent =
       `${count} item${count === 1 ? "" : "s"} • ${formatCurrency(total)}`;
-    button.classList.toggle("is-active", folder.id === state.selectedFolderId);
     button.addEventListener("click", () => openFolder(folder.id));
     folderList.appendChild(button);
   });
@@ -162,7 +150,7 @@ function renderItems() {
     button.querySelector(".card-title").textContent = item.title || "Untitled item";
     button.querySelector(".card-meta").textContent = `${formatCurrency(item.price)} • Qty ${item.quantity}`;
     button.classList.toggle("is-active", item.id === state.selectedItemId && state.currentView === "SAVE_FORM");
-    button.addEventListener("click", () => openItem(item.id, false));
+    button.addEventListener("click", () => openItem(item.id));
     itemList.appendChild(button);
   });
 }
@@ -191,13 +179,7 @@ function renderForm() {
   fields.notes.value = payload.notes ?? "";
   itemFolderSelect.value = payload.folderId ?? "";
 
-  const disabled = !state.isEditing;
-  itemForm.querySelectorAll("input, select, textarea, button[type='submit']").forEach((element) => {
-    element.disabled = disabled;
-  });
-
   document.getElementById("delete-item-button").disabled = isNewItem;
-  editItemButton.textContent = state.isEditing ? "Editing" : "Read Only";
   openUrlLink.href = payload.url || "#";
   openUrlLink.setAttribute("aria-disabled", payload.url ? "false" : "true");
 }
@@ -206,25 +188,27 @@ function openFolder(folderId) {
   state.selectedFolderId = folderId;
   state.selectedItemId = null;
   state.currentView = "ITEM_LIST";
-  state.isEditing = false;
   render();
 }
 
-function openItem(itemId, editing) {
+function openItem(itemId) {
   state.selectedItemId = itemId;
   state.currentView = "SAVE_FORM";
-  state.isEditing = editing;
   render();
 }
 
 function handleBack() {
   if (state.currentView === "SAVE_FORM") {
-    state.currentView = "ITEM_LIST";
-    state.isEditing = false;
+    state.currentView = state.selectedItemId ? "ITEM_LIST" : "FOLDER_LIST";
   } else {
     state.currentView = "FOLDER_LIST";
   }
 
+  render();
+}
+
+function handleHome() {
+  state.currentView = "FOLDER_LIST";
   render();
 }
 
@@ -275,7 +259,6 @@ function handleFolderMenu() {
     state.selectedFolderId = state.data.folders[0]?.id ?? null;
     state.selectedItemId = null;
     state.currentView = "FOLDER_LIST";
-    state.isEditing = false;
     saveState();
     render();
   }
@@ -289,27 +272,11 @@ function handleNewItem() {
 
   state.selectedItemId = null;
   state.currentView = "SAVE_FORM";
-  state.isEditing = true;
-  render();
-}
-
-function toggleEditMode() {
-  if (!state.selectedItemId) {
-    state.isEditing = true;
-    render();
-    return;
-  }
-
-  state.isEditing = !state.isEditing;
   render();
 }
 
 function handleSaveItem(event) {
   event.preventDefault();
-
-  if (!state.isEditing) {
-    return;
-  }
 
   const formData = new FormData(itemForm);
   const nextItem = {
@@ -334,7 +301,6 @@ function handleSaveItem(event) {
   state.selectedFolderId = nextItem.folderId;
   state.selectedItemId = nextItem.id;
   state.currentView = "ITEM_LIST";
-  state.isEditing = false;
   saveState();
   render();
 }
@@ -353,7 +319,6 @@ function handleDeleteItem() {
   state.data.items = state.data.items.filter((entry) => entry.id !== item.id);
   state.selectedItemId = null;
   state.currentView = "ITEM_LIST";
-  state.isEditing = false;
   saveState();
   render();
 }
