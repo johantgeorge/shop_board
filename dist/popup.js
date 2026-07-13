@@ -13,7 +13,6 @@ const defaultState = {
       price: 49.99,
       quantity: 1,
       url: "https://www.amazon.com/",
-      imageUrl: "",
       notes: "Compare with the 12-inch version before ordering.",
       createdAt: Date.now() - 1000 * 60 * 60 * 18
     },
@@ -24,7 +23,6 @@ const defaultState = {
       price: 32.5,
       quantity: 2,
       url: "https://www.amazon.com/",
-      imageUrl: "",
       notes: "Warm light only.",
       createdAt: Date.now() - 1000 * 60 * 60 * 8
     }
@@ -35,7 +33,10 @@ const state = {
   data: loadState(),
   currentView: "SAVE_FORM",
   selectedFolderId: null,
-  selectedItemId: null
+  selectedItemId: null,
+  pendingDeleteFolderId: null,
+  scrapedDraft: null,
+  scrapeMessage: ""
 };
 
 const folderView = document.getElementById("folder-view");
@@ -52,13 +53,16 @@ const itemForm = document.getElementById("item-form");
 const openUrlLink = document.getElementById("open-url-link");
 const itemFolderSelect = document.getElementById("item-folder");
 const homeButton = document.getElementById("home-button");
+const scrapeStatus = document.getElementById("scrape-status");
+const folderCreateForm = document.getElementById("folder-create-form");
+const folderNameInput = document.getElementById("folder-name-input");
+const cancelFolderButton = document.getElementById("cancel-folder-button");
 
 const fields = {
   title: document.getElementById("item-name"),
   price: document.getElementById("item-price"),
   quantity: document.getElementById("item-quantity"),
   url: document.getElementById("item-url"),
-  imageUrl: document.getElementById("item-image"),
   notes: document.getElementById("item-notes")
 };
 
@@ -68,16 +72,20 @@ function bootstrap() {
   state.selectedFolderId = state.data.folders[0]?.id ?? null;
   render();
   bindEvents();
+  prefillFromActiveTab();
 }
 
 function bindEvents() {
   backButtons.forEach((button) => button.addEventListener("click", handleBack));
-  document.getElementById("add-folder-button")?.addEventListener("click", handleAddFolder);
-  document.getElementById("folder-menu-button")?.addEventListener("click", handleFolderMenu);
+  document.getElementById("add-folder-button")?.addEventListener("click", handleShowAddFolder);
   document.getElementById("new-item-button")?.addEventListener("click", handleNewItem);
   document.getElementById("delete-item-button")?.addEventListener("click", handleDeleteItem);
   homeButton.addEventListener("click", handleHome);
+  fields.price.addEventListener("blur", normalizePriceInput);
+  fields.price.addEventListener("change", normalizePriceInput);
   itemForm.addEventListener("submit", handleSaveItem);
+  folderCreateForm.addEventListener("submit", handleAddFolder);
+  cancelFolderButton.addEventListener("click", handleCancelAddFolder);
 }
 
 function render() {
@@ -112,9 +120,25 @@ function renderFolders() {
       .reduce((sum, item) => sum + item.price * item.quantity, 0);
 
     button.querySelector(".card-title").textContent = folder.name;
-    button.querySelector(".card-meta").textContent =
-      `${count} item${count === 1 ? "" : "s"} • ${formatCurrency(total)}`;
+    button.querySelector(".card-price").textContent = formatCurrency(total);
+    button.querySelector(".card-meta").textContent = `${count} item${count === 1 ? "" : "s"}`;
+    button.querySelector(".folder-delete-button").addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      handleRequestDeleteFolder(folder.id);
+    });
     button.addEventListener("click", () => openFolder(folder.id));
+    button.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openFolder(folder.id);
+      }
+    });
+
+    if (state.pendingDeleteFolderId === folder.id) {
+      button.appendChild(createFolderDeleteConfirm(folder));
+    }
+
     folderList.appendChild(button);
   });
 }
@@ -148,7 +172,8 @@ function renderItems() {
   items.forEach((item) => {
     const button = template.content.firstElementChild.cloneNode(true);
     button.querySelector(".card-title").textContent = item.title || "Untitled item";
-    button.querySelector(".card-meta").textContent = `${formatCurrency(item.price)} • Qty ${item.quantity}`;
+    button.querySelector(".card-price").textContent = formatCurrency(item.price);
+    button.querySelector(".card-meta").textContent = `Qty ${item.quantity}`;
     button.classList.toggle("is-active", item.id === state.selectedItemId && state.currentView === "SAVE_FORM");
     button.addEventListener("click", () => openItem(item.id));
     itemList.appendChild(button);
@@ -163,25 +188,25 @@ function renderForm() {
 
   const payload = item ?? {
     folderId: state.selectedFolderId ?? state.data.folders[0]?.id ?? "",
-    title: "",
-    price: 0,
+    title: state.scrapedDraft?.title ?? "",
+    price: state.scrapedDraft?.price ?? 0,
     quantity: 1,
-    url: "",
-    imageUrl: "",
+    url: state.scrapedDraft?.url ?? "",
     notes: ""
   };
 
   fields.title.value = payload.title ?? "";
-  fields.price.value = payload.price ? String(payload.price) : "";
+  fields.price.value = payload.price || payload.price === 0 ? Number(payload.price).toFixed(2) : "";
   fields.quantity.value = String(payload.quantity ?? 1);
   fields.url.value = payload.url ?? "";
-  fields.imageUrl.value = payload.imageUrl ?? "";
   fields.notes.value = payload.notes ?? "";
   itemFolderSelect.value = payload.folderId ?? "";
 
   document.getElementById("delete-item-button").disabled = isNewItem;
   openUrlLink.href = payload.url || "#";
   openUrlLink.setAttribute("aria-disabled", payload.url ? "false" : "true");
+  scrapeStatus.textContent = state.scrapeMessage;
+  scrapeStatus.classList.toggle("is-hidden", !state.scrapeMessage || !isNewItem);
 }
 
 function openFolder(folderId) {
@@ -212,9 +237,80 @@ function handleHome() {
   render();
 }
 
-function handleAddFolder() {
-  const name = window.prompt("Folder name");
+function normalizePriceInput() {
+  if (!fields.price.value.trim()) {
+    return;
+  }
+
+  const parsed = Number(fields.price.value);
+  if (Number.isNaN(parsed)) {
+    return;
+  }
+
+  fields.price.value = parsed.toFixed(2);
+}
+
+async function prefillFromActiveTab() {
+  if (state.selectedItemId) {
+    return;
+  }
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) {
+      state.scrapeMessage = "Could not detect product details from this page.";
+      render();
+      return;
+    }
+
+    const response = await chrome.tabs.sendMessage(tab.id, { type: "SHOPBOARD_SCRAPE_PRODUCT" });
+    applyScrapedDraft(response?.product ?? null);
+  } catch {
+    state.scrapeMessage = "Could not detect product details from this page.";
+    render();
+  }
+}
+
+function applyScrapedDraft(product) {
+  if (state.selectedItemId || !product) {
+    state.scrapeMessage = "Could not detect product details from this page.";
+    render();
+    return;
+  }
+
+  state.scrapedDraft = {
+    title: product.title || "",
+    price: Number(product.price || 0),
+    url: product.url || "",
+    store: product.store || "",
+    source: product.source || "fallback"
+  };
+
+  if (product.source === "fallback") {
+    state.scrapeMessage = "Only basic page details were found. Review before saving.";
+  } else {
+    state.scrapeMessage = "";
+  }
+
+  render();
+}
+
+function handleShowAddFolder() {
+  state.pendingDeleteFolderId = null;
+  folderCreateForm.classList.remove("is-hidden");
+  folderNameInput.focus();
+}
+
+function handleCancelAddFolder() {
+  folderCreateForm.reset();
+  folderCreateForm.classList.add("is-hidden");
+}
+
+function handleAddFolder(event) {
+  event.preventDefault();
+  const name = folderNameInput.value;
   if (!name?.trim()) {
+    folderNameInput.focus();
     return;
   }
 
@@ -222,46 +318,73 @@ function handleAddFolder() {
   state.data.folders.push(folder);
   state.selectedFolderId = folder.id;
   saveState();
+  folderCreateForm.reset();
+  folderCreateForm.classList.add("is-hidden");
   openFolder(folder.id);
 }
 
-function handleFolderMenu() {
-  const folder = getSelectedFolder();
+function handleRequestDeleteFolder(folderId) {
+  state.pendingDeleteFolderId = folderId;
+  folderCreateForm.classList.add("is-hidden");
+  render();
+}
+
+function handleCancelDeleteFolder() {
+  state.pendingDeleteFolderId = null;
+  render();
+}
+
+function handleConfirmDeleteFolder() {
+  const folder = state.data.folders.find((entry) => entry.id === state.pendingDeleteFolderId);
   if (!folder) {
-    return;
-  }
-
-  const action = window.prompt(`Folder: ${folder.name}\nType "rename" or "delete".`, "rename");
-  if (action === "rename") {
-    const nextName = window.prompt("New folder name", folder.name);
-    if (!nextName?.trim()) {
-      return;
-    }
-    folder.name = nextName.trim();
-    saveState();
+    state.pendingDeleteFolderId = null;
     render();
     return;
   }
 
-  if (action === "delete") {
-    if (state.data.folders.length === 1) {
-      window.alert("Keep at least one folder.");
-      return;
-    }
+  state.data.folders = state.data.folders.filter((entry) => entry.id !== folder.id);
+  state.data.items = state.data.items.filter((entry) => entry.folderId !== folder.id);
+  state.selectedFolderId = state.data.folders[0]?.id ?? null;
+  state.selectedItemId = null;
+  state.currentView = "FOLDER_LIST";
+  state.pendingDeleteFolderId = null;
+  saveState();
+  render();
+}
 
-    const confirmed = window.confirm(`Delete folder "${folder.name}" and its items?`);
-    if (!confirmed) {
-      return;
-    }
+function createFolderDeleteConfirm(folder) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "folder-card-confirm";
+  wrapper.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  wrapper.addEventListener("keydown", (event) => {
+    event.stopPropagation();
+  });
 
-    state.data.folders = state.data.folders.filter((entry) => entry.id !== folder.id);
-    state.data.items = state.data.items.filter((entry) => entry.folderId !== folder.id);
-    state.selectedFolderId = state.data.folders[0]?.id ?? null;
-    state.selectedItemId = null;
-    state.currentView = "FOLDER_LIST";
-    saveState();
-    render();
-  }
+  const message = document.createElement("p");
+  message.className = "confirm-text";
+  message.textContent = `Delete folder "${folder.name}" and its items?`;
+
+  const actions = document.createElement("div");
+  actions.className = "confirm-actions";
+
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.className = "secondary-button compact-button";
+  cancelButton.textContent = "Cancel";
+  cancelButton.addEventListener("click", handleCancelDeleteFolder);
+
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "danger-button compact-button";
+  deleteButton.textContent = "Delete";
+  deleteButton.addEventListener("click", handleConfirmDeleteFolder);
+
+  actions.append(cancelButton, deleteButton);
+  wrapper.append(message, actions);
+  return wrapper;
 }
 
 function handleNewItem() {
@@ -286,8 +409,9 @@ function handleSaveItem(event) {
     price: Number(formData.get("price") ?? 0),
     quantity: Math.max(1, Number(formData.get("quantity") ?? 1)),
     url: String(formData.get("url") ?? "").trim(),
-    imageUrl: String(formData.get("imageUrl") ?? "").trim(),
     notes: String(formData.get("notes") ?? "").trim(),
+    store: getSelectedItem()?.store ?? state.scrapedDraft?.store ?? "",
+    source: getSelectedItem()?.source ?? state.scrapedDraft?.source ?? "",
     createdAt: getSelectedItem()?.createdAt ?? Date.now()
   };
 
@@ -301,6 +425,7 @@ function handleSaveItem(event) {
   state.selectedFolderId = nextItem.folderId;
   state.selectedItemId = nextItem.id;
   state.currentView = "ITEM_LIST";
+  state.scrapeMessage = "";
   saveState();
   render();
 }
@@ -366,6 +491,8 @@ function createEmptyState(message) {
 function formatCurrency(value) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
-    currency: "USD"
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
   }).format(Number(value || 0));
 }

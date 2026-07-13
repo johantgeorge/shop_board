@@ -14,6 +14,14 @@
           <button id="add-folder-button" class="secondary-button" type="button">Add Folder</button>
         </div>
 
+        <form id="folder-create-form" class="inline-form is-hidden">
+          <input id="folder-name-input" name="folderName" type="text" placeholder="New folder name" />
+          <div class="inline-form-actions">
+            <button id="cancel-folder-button" class="secondary-button compact-button" type="button">Cancel</button>
+            <button class="primary-button compact-button" type="submit">Create</button>
+          </div>
+        </form>
+
         <div id="folder-list" class="card-list" aria-label="Folders"></div>
       </section>
 
@@ -24,7 +32,7 @@
             <p class="eyebrow">Items</p>
             <h2 id="items-folder-title">Selected Folder</h2>
           </div>
-          <button id="folder-menu-button" class="secondary-button compact-button" type="button">Folder</button>
+          <button id="new-item-button" class="primary-button compact-button" type="button">+ New Item</button>
         </div>
 
         <div class="stats-bar">
@@ -33,8 +41,6 @@
         </div>
 
         <div id="item-list" class="card-list compact-list" aria-label="Items"></div>
-
-        <button id="new-item-button" class="primary-button" type="button">+ New Item</button>
       </section>
 
       <section id="form-view" class="view-panel is-hidden">
@@ -46,6 +52,8 @@
           </div>
           <button id="home-button" class="secondary-button compact-button" type="button">Home</button>
         </div>
+
+        <div id="scrape-status" class="scrape-status is-hidden" aria-live="polite"></div>
 
         <form id="item-form" class="item-form">
           <label>
@@ -71,11 +79,6 @@
           </label>
 
           <label>
-            <span>Image URL</span>
-            <input id="item-image" name="imageUrl" type="url" placeholder="https://example.com/image.jpg" />
-          </label>
-
-          <label>
             <span>Folder</span>
             <select id="item-folder" name="folderId"></select>
           </label>
@@ -95,15 +98,24 @@
     </div>
 
     <template id="folder-card-template">
-      <button class="card folder-card" type="button">
-        <span class="card-title"></span>
-        <span class="card-meta"></span>
-      </button>
+      <div class="card folder-card" role="button" tabindex="0">
+        <span class="card-row">
+          <span class="card-title"></span>
+          <span class="card-price"></span>
+        </span>
+        <span class="card-row card-subrow">
+          <span class="card-meta"></span>
+          <button class="folder-delete-button" type="button" aria-label="Delete folder">Delete</button>
+        </span>
+      </div>
     </template>
 
     <template id="item-card-template">
       <button class="card item-card" type="button">
-        <span class="card-title"></span>
+        <span class="card-row">
+          <span class="card-title"></span>
+          <span class="card-price"></span>
+        </span>
         <span class="card-meta"></span>
       </button>
     </template>
