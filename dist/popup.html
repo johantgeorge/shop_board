@@ -78,9 +78,23 @@
             <input id="item-url" name="url" type="url" placeholder="https://example.com/product" />
           </label>
 
-          <label>
+          <label class="folder-field">
             <span>Folder</span>
-            <select id="item-folder" name="folderId"></select>
+            <input id="item-folder" name="folderId" type="hidden" />
+            <div id="folder-picker" class="folder-picker">
+              <button
+                id="folder-picker-button"
+                class="folder-picker-button"
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+              >
+                <span id="folder-picker-label" class="folder-picker-label">Select a folder</span>
+                <span class="select-chevron" aria-hidden="true">▾</span>
+              </button>
+              <div id="folder-picker-menu" class="folder-picker-menu is-hidden" role="listbox" aria-label="Folder options"></div>
+            </div>
+            <span id="folder-field-meta" class="field-meta">Choose where this item should be saved.</span>
           </label>
 
           <label>

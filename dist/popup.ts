@@ -68,6 +68,7 @@ const state = {
   selectedFolderId: null as string | null,
   selectedItemId: null as string | null,
   pendingDeleteFolderId: null as string | null,
+  isFolderPickerOpen: false,
   scrapedDraft: null as ScrapedProduct | null,
   scrapeMessage: ""
 };
@@ -84,7 +85,12 @@ const itemCount = document.getElementById("item-count") as HTMLElement;
 const itemTotal = document.getElementById("item-total") as HTMLElement;
 const itemForm = document.getElementById("item-form") as HTMLFormElement;
 const openUrlLink = document.getElementById("open-url-link") as HTMLAnchorElement;
-const itemFolderSelect = document.getElementById("item-folder") as HTMLSelectElement;
+const itemFolderSelect = document.getElementById("item-folder") as HTMLInputElement;
+const folderPicker = document.getElementById("folder-picker") as HTMLElement;
+const folderPickerButton = document.getElementById("folder-picker-button") as HTMLButtonElement;
+const folderPickerLabel = document.getElementById("folder-picker-label") as HTMLElement;
+const folderPickerMenu = document.getElementById("folder-picker-menu") as HTMLElement;
+const folderFieldMeta = document.getElementById("folder-field-meta") as HTMLElement;
 const homeButton = document.getElementById("home-button") as HTMLButtonElement;
 const scrapeStatus = document.getElementById("scrape-status") as HTMLElement;
 const folderCreateForm = document.getElementById("folder-create-form") as HTMLFormElement;
@@ -116,9 +122,12 @@ function bindEvents() {
   homeButton.addEventListener("click", handleHome);
   fields.price.addEventListener("blur", normalizePriceInput);
   fields.price.addEventListener("change", normalizePriceInput);
+  folderPickerButton.addEventListener("click", handleToggleFolderPicker);
   itemForm.addEventListener("submit", handleSaveItem);
   folderCreateForm.addEventListener("submit", handleAddFolder);
   cancelFolderButton.addEventListener("click", handleCancelAddFolder);
+  document.addEventListener("click", handleDocumentClick);
+  document.addEventListener("keydown", handleDocumentKeydown);
 }
 
 function render() {
@@ -177,14 +186,45 @@ function renderFolders() {
 }
 
 function renderFolderOptions() {
-  itemFolderSelect.innerHTML = "";
+  folderPickerMenu.innerHTML = "";
+
+  const createButton = document.createElement("button");
+  createButton.type = "button";
+  createButton.className = "folder-picker-create";
+  createButton.textContent = "+ New Folder";
+  createButton.addEventListener("click", handleCreateFolderFromPicker);
+  folderPickerMenu.appendChild(createButton);
 
   state.data.folders.forEach((folder) => {
-    const option = document.createElement("option");
-    option.value = folder.id;
-    option.textContent = folder.name;
-    itemFolderSelect.appendChild(option);
+    const option = document.createElement("button");
+    const count = state.data.items.filter((item) => item.folderId === folder.id).length;
+    const total = state.data.items
+      .filter((item) => item.folderId === folder.id)
+      .reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+    option.type = "button";
+    option.className = "folder-picker-option";
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", itemFolderSelect.value === folder.id ? "true" : "false");
+    option.classList.toggle("is-selected", itemFolderSelect.value === folder.id);
+    option.addEventListener("click", () => handleSelectFolderOption(folder.id));
+
+    const title = document.createElement("span");
+    title.className = "folder-picker-option-title";
+    title.textContent = folder.name;
+
+    const meta = document.createElement("span");
+    meta.className = "folder-picker-option-meta";
+    meta.textContent = `${count} item${count === 1 ? "" : "s"} · ${formatCurrency(total)}`;
+
+    option.append(title, meta);
+    folderPickerMenu.appendChild(option);
   });
+
+  folderPickerMenu.classList.toggle("is-hidden", !state.isFolderPickerOpen);
+  folderPickerButton.classList.toggle("is-open", state.isFolderPickerOpen);
+  folderPickerButton.setAttribute("aria-expanded", state.isFolderPickerOpen ? "true" : "false");
+  renderSelectedFolderMeta();
 }
 
 function renderItems() {
@@ -234,6 +274,8 @@ function renderForm() {
   fields.url.value = payload.url ?? "";
   fields.notes.value = payload.notes ?? "";
   itemFolderSelect.value = payload.folderId ?? "";
+  state.isFolderPickerOpen = false;
+  renderSelectedFolderMeta();
 
   (document.getElementById("delete-item-button") as HTMLButtonElement).disabled = isNewItem;
   openUrlLink.href = payload.url || "#";
@@ -356,6 +398,32 @@ function handleAddFolder(event: Event) {
   openFolder(folder.id);
 }
 
+function handleToggleFolderPicker() {
+  state.isFolderPickerOpen = !state.isFolderPickerOpen;
+  renderFolderOptions();
+}
+
+function handleSelectFolderOption(folderId: string) {
+  itemFolderSelect.value = folderId;
+  state.isFolderPickerOpen = false;
+  renderFolderOptions();
+}
+
+function handleCreateFolderFromPicker() {
+  const name = window.prompt("New folder name");
+  if (!name?.trim()) {
+    return;
+  }
+
+  const folder: Folder = { id: crypto.randomUUID(), name: name.trim() };
+  state.data.folders.push(folder);
+  state.selectedFolderId = folder.id;
+  itemFolderSelect.value = folder.id;
+  state.isFolderPickerOpen = false;
+  saveState();
+  render();
+}
+
 function handleRequestDeleteFolder(folderId: string) {
   state.pendingDeleteFolderId = folderId;
   folderCreateForm.classList.add("is-hidden");
@@ -365,6 +433,28 @@ function handleRequestDeleteFolder(folderId: string) {
 function handleCancelDeleteFolder() {
   state.pendingDeleteFolderId = null;
   render();
+}
+
+function handleDocumentClick(event: MouseEvent) {
+  if (!state.isFolderPickerOpen) {
+    return;
+  }
+
+  if (folderPicker.contains(event.target as Node)) {
+    return;
+  }
+
+  state.isFolderPickerOpen = false;
+  renderFolderOptions();
+}
+
+function handleDocumentKeydown(event: KeyboardEvent) {
+  if (event.key !== "Escape" || !state.isFolderPickerOpen) {
+    return;
+  }
+
+  state.isFolderPickerOpen = false;
+  renderFolderOptions();
 }
 
 function handleConfirmDeleteFolder() {
@@ -383,6 +473,25 @@ function handleConfirmDeleteFolder() {
   state.pendingDeleteFolderId = null;
   saveState();
   render();
+}
+
+function renderSelectedFolderMeta() {
+  const folderId = itemFolderSelect.value;
+  const folder = state.data.folders.find((entry) => entry.id === folderId);
+
+  if (!folder) {
+    folderPickerLabel.textContent = "Select a folder";
+    folderFieldMeta.textContent = "Choose where this item should be saved.";
+    return;
+  }
+
+  const count = state.data.items.filter((item) => item.folderId === folder.id).length;
+  const total = state.data.items
+    .filter((item) => item.folderId === folder.id)
+    .reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  folderPickerLabel.textContent = folder.name;
+  folderFieldMeta.textContent = `${folder.name} · ${count} item${count === 1 ? "" : "s"} · ${formatCurrency(total)}`;
 }
 
 function createFolderDeleteConfirm(folder: Folder) {
